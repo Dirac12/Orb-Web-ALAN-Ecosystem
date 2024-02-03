@@ -8,39 +8,65 @@ from mesa.visualization.modules import CanvasGrid, ChartModule
 from mesa.visualization.UserParam import Slider
 from random import Random
 
+n_ecosystem_starts = 0
 
 class Spider(Agent):
-    def __init__(self, unique_id, model, age, fecundity, growth, width, height):
+    def __init__(self, unique_id, model, age, fecundity, growth):
         super().__init__(unique_id, model)
         self.age = age
-        self.satiation = 0
+        self.satiation = 100
         self.fecundity = fecundity
-        self.grid = mesa.space.MultiGrid(width, height, True)
+        # self.grid = mesa.space.MultiGrid(width, height, True)
         self.growth_rate = growth
 
+    def step(self):
+        print("Spider step (move, grow, reproduce, light_interaction)")
+        self.move()
+        print('between move and grow, pos:', self.pos)
+        self.grow()
+        print('ABOUT:self(spider).model.grid.get_cell_list_contents(',
+              self.pos, ')')
+        lights_in_cells = self.model.grid.get_cell_list_contents([self.pos])
+        self.light_interaction(lights_in_cells)
+        if self.satiation <= 0:
+            print('STARVATION of agent', self, 'pos:', self.pos, 'satiation:', self.satiation)
+            self.model.schedule.remove(self)
+            self.model.grid.remove_agent(self)
+
     def move(self):
-        print("Spider moving")
-        if self.pos is not None:  # Add this check to ensure the position is not None
-            possible_steps = self.grid.get_neighborhood(
-                self.pos, moore=True, include_center=False
-            )
-            new_position = self.random.choice(possible_steps)
+        print("Spider moving, starting at", self.pos)
+        if not self.pos:
+            print("*warning* - spider agent had a None position")
+            return
+        possible_steps = self.model.grid.get_neighborhood(
+            self.pos, moore=True, include_center=False
+        )
+        new_position = self.random.choice(possible_steps)
 
-            self.satiation -= 1
+        self.satiation -= 1
 
-            if self.grid.is_cell_empty(new_position):
-                self.grid.move_agent(self, new_position)
-            else:
-                cellmates = self.grid.get_cell_list_contents([new_position])
-                for mate in cellmates:
-                    if isinstance(mate, Prey):
-                        self.satiation += 10
-                        self.grid.remove_agent(mate)
-            if self.satiation <= 0:
-                self.grid.remove_agent(self)
+        if self.model.grid.is_cell_empty(new_position):
+            # empty destination, just move there!
+            print('SPIDER_MOVE: old', self.pos)
+            print('SPIDER_MOVE: new', new_position)
+            self.model.grid.move_agent(self, new_position)
+        else:
+            # if others are in this cell, and they are prey, start
+            # eating
+            cellmates = self.model.grid.get_cell_list_contents([new_position])
+            for mate in cellmates:
+                print(f'cellmate_ID_{mate.unique_id}:', mate)
+                if isinstance(mate, Prey):
+                    print(f'    it was PREY_{mate.unique_id}; eat it!')
+                    self.satiation += 10
+                    # self.model.schedule.remove(mate)
+                    mate.remove()
+                    # self.model.schedule.remove(mate)
+                    self.model.grid.remove_agent(mate)
 
 
     def grow(self):
+        print('spider grow(), pos:', self.pos, 'age:', self.age)
         while 6 <= self.age <= 10:
             self.age += 2
             self.growth_rate += 1  # Increase growth rate when age is between 6 and 10
@@ -48,21 +74,23 @@ class Spider(Agent):
             self.age += 1
         if self.age >= 12 and self.random.random() < self.fecundity:
             self.reproduce()
-        if self.age >= 24:
+        if self.age >= 24:      # die at age 24
+            self.model.schedule.remove(self)
             self.model.grid.remove_agent(self)
 
     def reproduce(self):
         if self.growth_rate and self.age >= 12:
-            possible_moves = self.grid.get_neighborhood(
+            possible_moves = self.model.grid.get_neighborhood(
                 self.pos, moore=True, include_center=False
             )
             if len(possible_moves) > 0:
-                empty_neighbors = [cell for cell in possible_moves if self.grid.is_cell_empty(cell)]
+                empty_neighbors = [cell for cell in possible_moves
+                                   if self.model.grid.is_cell_empty(cell)]
                 if empty_neighbors:
                     new_position = self.random.choice(empty_neighbors)
                     new_spider = Spider(self.model.next_id(), self.model, age=0,
                                         fecundity=self.fecundity, growth=self.growth_rate)
-                    self.grid.place_agent(new_spider, new_position)
+                    self.model.grid.place_agent(new_spider, new_position)
                     self.model.schedule.add(new_spider)
 
 
@@ -72,30 +100,35 @@ class Spider(Agent):
                 if isinstance(light, Lights):
                     self.satiation += 10
                     if light.diameter > 0:
-                        neighbors = self.grid.get_neighbors(self.pos, moore=True,
-                                                            include_center=False,
-                                                            radius=light.diameter)
+                        neighbors = self.model.grid.get_neighbors(self.pos, moore=True,
+                                                                  include_center=False,
+                                                                  radius=light.diameter)
                         for neighbor in neighbors:
                             if isinstance(neighbor, Spider) and neighbor.pos is not None:  
                                 neighbor.growth_rate *= 2  # Double the growth rate for spider neighbors
 
 
 class Prey(Agent):
-    def __init__(self, unique_id, model, age, survival, width, height):
+    def __init__(self, unique_id, model, age, survival):
         super().__init__(unique_id, model)
         self.age = age
-        self.grid = mesa.space.MultiGrid(width, height, True)
+        # self.grid = mesa.space.MultiGrid(width, height, True)
         self.survival = survival
 
+    def step(self):
+        print("Prey step")
+        self.move()
 
     def move(self):
-        print("Prey Moving")
-        possible_steps = self.grid.get_neighborhood(
+        print(f"PREY_{self.unique_id}_MOVE old:", self.pos)
+        possible_steps = self.model.grid.get_neighborhood(
             self.pos, moore=True, include_center=False
         )
+        print('prey possible:', possible_steps)
         new_position = self.random.choice(possible_steps)
-        self.grid.move_agent(self, new_position)
-        self.schedule.add(self)
+        print(f"PREY_{self.unique_id}_MOVE new:", new_position)
+        self.model.grid.move_agent(self, new_position)
+        print(f"PREY_{self.unique_id}_MOVE after:", self.pos)
 
 
 class Lights(Agent):
@@ -115,6 +148,9 @@ class EcosystemModel(Model):
     def __init__(self, num_spiders, num_prey, num_lights, spider_fecundity, spider_growth,
                  prey_survival, lights_luminosity, width, height):
         super().__init__()
+        global n_ecosystem_starts
+        print('before: n_ecosystem_starts:', n_ecosystem_starts)
+        n_ecosystem_starts += 1
         self.schedule = RandomActivation(self)
         self.grid = Environment(width, height, True)
         self.num_spiders = num_spiders
@@ -124,37 +160,32 @@ class EcosystemModel(Model):
         self.spider_growth = spider_growth
         self.prey_survival = prey_survival
         self.lights_luminosity = lights_luminosity
-        self.datacollector = DataCollector(agent_reporters={"Spiders": lambda m: sum(1 for agent in m.schedule.agents if isinstance(agent, Spider))})
+        self.datacollector = DataCollector(agent_reporters={"Spiders": spider_sum,
+                                                            "Prey": prey_sum
+                                                            })
+        # self.datacollector = DataCollector(agent_reporters={"Spiders": lambda m: sum(1 for agent in m.schedule.agents if isinstance(agent, Spider))})
 
         for _i in range(self.num_spiders):
             x = self.random.randrange(self.grid.width)
             y = self.random.randrange(self.grid.height)
             spider = Spider(self.next_id(), self, age=0, fecundity=self.spider_fecundity,
-                            growth=self.spider_growth, width=width, height=height)
+                            growth=self.spider_growth)
             self.grid.place_agent(spider, (x, y))
             self.schedule.add(spider)
 
         for _i in range(self.num_prey):
             x = self.random.randrange(self.grid.width)
             y = self.random.randrange(self.grid.height)
-            prey = Prey(self.next_id(), self, age=0, survival=self.prey_survival,
-                        width=width, height=height)
+            prey = Prey(self.next_id(), self, age=0, survival=self.prey_survival)
             self.grid.place_agent(prey, (x, y))
             self.schedule.add(prey)
+            print('ADDED_PREY:', prey.unique_id)
+        print('=====================================')
 
 
     def step(self):
-        print("Step called")
+        print("Ecosystem Step called")
         self.schedule.step()
-        for agent in self.schedule.agents:
-            if isinstance(agent, Spider):
-                agent.move()
-                agent.grow()
-                agent.reproduce()
-                lights_in_cells = self.grid.get_cell_list_contents([agent.pos])
-                agent.light_interaction(lights_in_cells)
-            elif isinstance(agent, Prey):
-                agent.move()
         self.datacollector.collect(self)
 
 
@@ -197,13 +228,33 @@ def agent_portrayal(agent):
 
 
 def main():
-    chart = ChartModule([{"Label": "Spiders", "Color": "green"}], data_collector_name="datacollector")
-    grid = CanvasGrid(agent_portrayal, params["width"], params["height"], 500, 400)
+    grid = CanvasGrid(agent_portrayal,
+                      params["width"], params["height"],
+                      20*params["width"], 20*params["height"])
+    chart = ChartModule([{"Label": "Spiders", "Color": "green"}], 
+                        data_collector_name="datacollector")
     server = ModularServer(EcosystemModel,
                            [grid, chart],
                            "Ecosystem Model",
                            model_params=params)
     server.launch()
+
+def spider_sum(agent):
+    sum = 0
+    for a in agent.model.schedule.agents:
+        if isinstance(a, Spider):
+           sum += 1
+    return sum
+    # sum(1 for agent in model.schedule.agents if isinstance(agent, Spider))})
+
+def prey_sum(agent):
+    sum = 0
+    for a in agent.model.schedule.agents:
+        if isinstance(a, Prey):
+           sum += 1
+    return sum
+    # sum(1 for agent in model.schedule.agents if isinstance(agent, Spider))})
+
 
 if __name__ == '__main__':
     main()
