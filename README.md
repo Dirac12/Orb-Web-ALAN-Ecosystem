@@ -5,7 +5,7 @@
 ##install mesa 
 using:
 
-$pip install mesa
+$pip3 install mesa
 
 
 ###run python3 Orb.py to run the program 
