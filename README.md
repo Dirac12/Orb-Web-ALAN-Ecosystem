@@ -3,7 +3,13 @@ Used ABM to model this ecosystem and am next going to use latent association to 
 
 install mesa 
 using:
-
+```
 $pip3 install mesa
+```
 
-run python3 Orb.py to run the program 
+run 
+```
+python3 Orb.py
+```
+
+to run the program 
