@@ -31,7 +31,7 @@ python3 Orb.py
 ```
 
 run
-######Note: This is an updated version of Orb.py
+(Note: This is an updated version of Orb.py)
 ```
 python3 update.py 
 ```
