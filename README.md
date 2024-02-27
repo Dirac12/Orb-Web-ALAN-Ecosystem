@@ -9,6 +9,21 @@ using:
 ```
 $pip3 install mesa
 ```
+
+install panel
+using:
+
+```
+$pip3 install panel
+```
+
+Optional:
+install networkx
+using:
+
+```
+$pip3 install networkx
+```
 ### Running
 run 
 ```
